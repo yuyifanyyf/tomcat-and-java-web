@@ -1,8 +1,11 @@
 package Chapter01;
 import java.io.*;
 import java.net.*;
+import java.util.HashMap;
+import java.util.Map;
 
-public class HTTPServer {
+public class HTTPServer1 {
+	private static Map servletCache = new HashMap();
 	public static void main(String[] args)
 	{
 		int port;
@@ -48,9 +51,9 @@ public class HTTPServer {
 		Thread.sleep(500);
 		int size = socketIn.available();
 		System.out.println(size);
-		byte[] buffer = new byte[size];
-		socketIn.read(buffer);
-		String request = new String(buffer);
+		byte[] requestBuffer = new byte[size];
+		socketIn.read(requestBuffer);
+		String request = new String(requestBuffer);
 		System.out.println(request);
 		//获得http请求的第一行
 		String firstLineOfRequest = request.substring(0, request.indexOf("\r\n"));
@@ -59,6 +62,28 @@ public class HTTPServer {
 		String uri = parts[1];
 		//决定http响应正文的类型，此处做了简化处理
 		String contentType;
+		
+		if (uri.indexOf("servlet") != -1)
+		{
+			String servletName = null;
+			if (uri.indexOf("?") != -1)
+				servletName = uri.substring(uri.indexOf("servlet/") + 8, uri.indexOf("?"));
+			else
+				servletName = uri.substring(uri.indexOf("servlet/") + 8, uri.length());
+			
+			Servlet servlet = (Servlet)servletCache.get(servletName);
+			if (servlet == null)
+			{
+				servlet = (Servlet)Class.forName("Chapter01." + servletName).newInstance();
+				servlet.init();
+				servletCache.put(servletName, servlet);
+			}
+			//调用servlet的service()方法
+			servlet.service(requestBuffer, socket.getOutputStream());
+			Thread.sleep(1000);
+			socket.close();
+			return;
+		}
 		if (uri.indexOf("html") != -1 || uri.indexOf("htm") != -1)
 			contentType = "text/html";
 		else if (uri.indexOf("jpg") != -1 || uri.indexOf("jpeg") != -1)
@@ -75,7 +100,7 @@ public class HTTPServer {
 		String responseHeader = "Content-Type:" + contentType + "\r\n\r\n";
 		//获得读取响应正文输入流
 		//以.class文件为基准的相对路径，是.class文件，不是.java文件
-		InputStream in = HTTPServer.class.getResourceAsStream("root" + uri);
+		InputStream in = HTTPServer1.class.getResourceAsStream("root" + uri);
 		
 		/*发送http响应结果*/
 		OutputStream socketOut = socket.getOutputStream();
@@ -85,9 +110,9 @@ public class HTTPServer {
 		socketOut.write(responseHeader.getBytes());
 		//发送http响应正文
 		int len = 0;
-		buffer = new byte[128];
-		while ((len = in.read(buffer)) != -1)
-			socketOut.write(buffer, 0, len);
+		requestBuffer = new byte[128];
+		while ((len = in.read(requestBuffer)) != -1)
+			socketOut.write(requestBuffer, 0, len);
 		
 		Thread.sleep(1000);
 		socket.close();
